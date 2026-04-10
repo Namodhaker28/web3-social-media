@@ -1,7 +1,6 @@
 "use client"
 
-import { useState } from "react"
-import { useWeb3 } from "./web3-provider"
+import { useAuth } from "./auth-provider"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -11,35 +10,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Copy, ExternalLink, LogOut } from "lucide-react"
+import { LogOut, User } from "lucide-react"
+import Link from "next/link"
 
+/** Account dropdown for authenticated users; Log in / Sign up links when unauthenticated. */
 export function ConnectButton({ showBalance = false }: { showBalance?: boolean }) {
-  const { account, chainName, connectWallet, disconnectWallet, isConnecting, isConnected } = useWeb3()
-  const [copied, setCopied] = useState(false)
+  const { isAuthenticated, logout } = useAuth()
 
-  const truncateAddress = (address: string) => {
-    return `${address.slice(0, 6)}...${address.slice(-4)}`
-  }
-
-  const copyAddress = () => {
-    if (account) {
-      navigator.clipboard.writeText(account)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
-
-  const openEtherscan = () => {
-    if (account) {
-      window.open(`https://etherscan.io/address/${account}`, "_blank")
-    }
-  }
-
-  if (!isConnected) {
+  if (!isAuthenticated) {
     return (
-      <Button onClick={connectWallet} disabled={isConnecting}>
-        {isConnecting ? "Connecting..." : "Connect Wallet"}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Link href="/login">
+          <Button variant="ghost">Log in</Button>
+        </Link>
+        <Link href="/register">
+          <Button variant="outline">Sign up</Button>
+        </Link>
+      </div>
     )
   }
 
@@ -47,28 +34,24 @@ export function ConnectButton({ showBalance = false }: { showBalance?: boolean }
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="outline">
-          {chainName && <span className="mr-2 h-2 w-2 rounded-full bg-green-500" />}
-          {account && truncateAddress(account)}
+          <User className="mr-2 h-4 w-4" />
+          Account
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>My Account</DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={copyAddress} className="cursor-pointer">
-          <Copy className="mr-2 h-4 w-4" />
-          {copied ? "Copied!" : "Copy Address"}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={openEtherscan} className="cursor-pointer">
-          <ExternalLink className="mr-2 h-4 w-4" />
-          View on Etherscan
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={disconnectWallet} className="cursor-pointer text-destructive">
+        <DropdownMenuItem
+          onClick={() => {
+            logout()
+            window.location.href = "/"
+          }}
+          className="cursor-pointer text-destructive"
+        >
           <LogOut className="mr-2 h-4 w-4" />
-          Disconnect
+          Log out
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
 }
-

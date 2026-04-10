@@ -3,13 +3,14 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
-import { Web3Provider } from "@/components/web3-provider"
+import { AuthProvider } from "@/components/auth-provider"
+import { Toaster } from "@/components/ui/sonner"
 
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "DecentSocial - Web3 Social Media",
-  description: "A decentralized social media platform powered by Web3",
+  title: "civicGram - Social Media",
+  description: "A social media platform built for community",
     generator: 'v0.dev'
 }
 
@@ -22,13 +23,12 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <Web3Provider>{children}</Web3Provider>
+          <AuthProvider>
+            {children}
+            <Toaster />
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>
   )
 }
-
-
-
-import './globals.css'

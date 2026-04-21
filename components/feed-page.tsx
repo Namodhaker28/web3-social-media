@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, Fragment } from "react"
 import { useAuth } from "@/components/auth-provider"
 import { useRouter } from "next/navigation"
 import { ConnectButton } from "@/components/connect-button"
@@ -15,7 +15,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Bell,
   Globe,
-  Heart,
   Home,
   Image,
   MessageCircle,
@@ -23,17 +22,28 @@ import {
   PenSquare,
   Search,
   Share2,
+  Shield,
+  CircleDollarSign,
+  Wallet,
   User,
   Video,
   X,
 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { feedApi, postsApi, usersApi, followApi, trendingApi } from "@/lib/api-client"
+import { AdSlot } from "@/components/ad-slot"
 import { PostImages } from "@/components/post-images"
+import { PostVoteControls } from "@/components/post-vote-controls"
 import { normalizePost } from "@/lib/normalize-post"
 import type { ApiPost, ApiUser } from "@/lib/api-types"
 import Link from "next/link"
 import { toast } from "sonner"
+
+/** Next vote payload for up/down (clicking active direction removes the vote). */
+function nextVoteValue(userVote: 1 | -1 | 0, target: "up" | "down"): 1 | -1 | 0 {
+  if (target === "up") return userVote === 1 ? 0 : 1
+  return userVote === -1 ? 0 : -1
+}
 
 export function FeedPage() {
   const { isAuthenticated } = useAuth()
@@ -53,7 +63,9 @@ export function FeedPage() {
   const [loadingFollowing, setLoadingFollowing] = useState(false)
   const [loadingTrending, setLoadingTrending] = useState(false)
   const [createLoading, setCreateLoading] = useState(false)
-  const [likeLoadingId, setLikeLoadingId] = useState<string | null>(null)
+  const [voteLoadingId, setVoteLoadingId] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] = useState<ApiUser | null>(null)
+  const feedAdSlot = process.env.NEXT_PUBLIC_ADSENSE_FEED_SLOT ?? ""
 
   const truncateAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`
@@ -92,6 +104,25 @@ export function FeedPage() {
     fetchFeed()
   }, [fetchFeed])
 
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setCurrentUser(null)
+      return
+    }
+    let cancelled = false
+    usersApi
+      .getMe()
+      .then((u) => {
+        if (!cancelled) setCurrentUser(u)
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentUser(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated])
+
   const fetchFollowing = useCallback(async () => {
     setLoadingFollowing(true)
     try {
@@ -128,17 +159,16 @@ export function FeedPage() {
     if (!newPostContent.trim()) return
     setCreateLoading(true)
     try {
-      const created = await postsApi.create(
+      await postsApi.create(
         newPostContent,
         newPostImages.length > 0 ? newPostImages : undefined,
         newPostVideo ?? undefined
       )
-      setPosts((prev) => [normalizePost(created), ...prev])
       setNewPostContent("")
       setNewPostImages([])
       setNewPostVideo(null)
       setIsCreatingPost(false)
-      toast.success("Post created")
+      toast.success("Submitted for review. Your post will appear after moderator approval.")
     } catch (e) {
       toast.error((e as Error).message ?? "Failed to create post")
     } finally {
@@ -146,35 +176,23 @@ export function FeedPage() {
     }
   }
 
-  const handleLike = async (postId: string) => {
-    setLikeLoadingId(postId)
+  const handleVote = async (post: ApiPost & { timestamp: string }, target: "up" | "down") => {
+    const value = nextVoteValue(post.userVote, target)
+    setVoteLoadingId(post.id)
     try {
-      const res = await postsApi.like(postId)
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? { ...p, hasLiked: res.liked, likes: res.likesCount }
-            : p
-        )
-      )
-      setFollowingPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? { ...p, hasLiked: res.liked, likes: res.likesCount }
-            : p
-        )
-      )
-      setTrendingPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId
-            ? { ...p, hasLiked: res.liked, likes: res.likesCount }
-            : p
-        )
-      )
+      const res = await postsApi.vote(post.id, value)
+      const patch = {
+        upvotes: res.upvotes,
+        downvotes: res.downvotes,
+        userVote: res.userVote,
+      }
+      setPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, ...patch } : p)))
+      setFollowingPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, ...patch } : p)))
+      setTrendingPosts((prev) => prev.map((p) => (p.id === post.id ? { ...p, ...patch } : p)))
     } catch (e) {
-      toast.error((e as Error).message ?? "Failed to update like")
+      toast.error((e as Error).message ?? "Failed to update vote")
     } finally {
-      setLikeLoadingId(null)
+      setVoteLoadingId(null)
     }
   }
 
@@ -249,6 +267,28 @@ export function FeedPage() {
                 Profile
               </Link>
             </Button>
+            <Button variant="ghost" className="w-full justify-start" size="lg" asChild>
+              <Link href="/earnings">
+                <CircleDollarSign className="mr-2 h-5 w-5" />
+                Earnings
+              </Link>
+            </Button>
+            {currentUser?.role === "admin" && (
+              <>
+                <Button variant="ghost" className="w-full justify-start" size="lg" asChild>
+                  <Link href="/admin/moderation">
+                    <Shield className="mr-2 h-5 w-5" />
+                    Moderation
+                  </Link>
+                </Button>
+                <Button variant="ghost" className="w-full justify-start" size="lg" asChild>
+                  <Link href="/admin/payouts">
+                    <Wallet className="mr-2 h-5 w-5" />
+                    Payouts
+                  </Link>
+                </Button>
+              </>
+            )}
             <Button
               variant="default"
               className="w-full justify-start mt-4"
@@ -312,66 +352,71 @@ export function FeedPage() {
                   <p className="text-muted-foreground">Create a post or follow others to see content here.</p>
                 </div>
               ) : (
-                posts.map((post) => (
-                  <Card key={post.id}>
-                    <CardHeader className="pb-3">
-                      <div className="flex justify-between items-start">
-                        <div className="flex items-center gap-3">
-                          <Avatar>
-                            <AvatarImage src={post.author.avatar || (post.author as { avatarUrl?: string }).avatarUrl} alt={post.author.name} />
-                            <AvatarFallback>{(post.author.name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          <div>
-                            <div className="font-semibold">{post.author.name || truncateAddress(post.author.address)}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {post.author.username ? `@${post.author.username}` : truncateAddress(post.author.address)} ·{" "}
-                              {formatDistanceToNow(new Date(post.timestamp), { addSuffix: true })}
+                posts.map((post, index) => (
+                  <Fragment key={post.id}>
+                    <Card>
+                      <CardHeader className="pb-3">
+                        <div className="flex justify-between items-start">
+                          <div className="flex items-center gap-3">
+                            <Avatar>
+                              <AvatarImage src={post.author.avatar || (post.author as { avatarUrl?: string }).avatarUrl} alt={post.author.name} />
+                              <AvatarFallback>{(post.author.name || "?").slice(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div>
+                              <div className="font-semibold">{post.author.name || truncateAddress(post.author.address)}</div>
+                              <div className="text-sm text-muted-foreground">
+                                {post.author.username ? `@${post.author.username}` : truncateAddress(post.author.address)} ·{" "}
+                                {formatDistanceToNow(new Date(post.timestamp), { addSuffix: true })}
+                              </div>
                             </div>
                           </div>
+                          <Button variant="ghost" size="icon">
+                            <MoreHorizontal className="h-5 w-5" />
+                          </Button>
                         </div>
-                        <Button variant="ghost" size="icon">
-                          <MoreHorizontal className="h-5 w-5" />
-                        </Button>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="whitespace-pre-line">{post.content}</p>
-                      {post.videoUrl && (
-                        <video
-                          src={post.videoUrl}
-                          controls
-                          className="mt-3 w-full max-h-96 rounded-lg"
+                      </CardHeader>
+                      <CardContent>
+                        <p className="whitespace-pre-line">{post.content}</p>
+                        {post.videoUrl && (
+                          <video
+                            src={post.videoUrl}
+                            controls
+                            className="mt-3 w-full max-h-96 rounded-lg"
+                          />
+                        )}
+                        <PostImages
+                          videoUrl={post.videoUrl}
+                          imageUrls={post.imageUrls}
+                          imageUrl={post.imageUrl}
                         />
-                      )}
-                      <PostImages
-                        videoUrl={post.videoUrl}
-                        imageUrls={post.imageUrls}
-                        imageUrl={post.imageUrl}
-                      />
-                    </CardContent>
-                    <CardFooter className="border-t pt-3">
-                      <div className="flex justify-between w-full">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleLike(post.id)}
-                          disabled={likeLoadingId === post.id}
-                          className={post.hasLiked ? "text-red-500" : ""}
-                        >
-                          <Heart className={`h-5 w-5 mr-2 ${post.hasLiked ? "fill-current" : ""}`} />
-                          {post.likes}
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <MessageCircle className="h-5 w-5 mr-2" />
-                          {post.comments}
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                          <Share2 className="h-5 w-5 mr-2" />
-                          Share
-                        </Button>
+                      </CardContent>
+                      <CardFooter className="border-t pt-3">
+                        <div className="flex justify-between w-full items-center">
+                          <PostVoteControls
+                            upvotes={post.upvotes}
+                            downvotes={post.downvotes}
+                            userVote={post.userVote}
+                            loading={voteLoadingId === post.id}
+                            onUp={() => handleVote(post, "up")}
+                            onDown={() => handleVote(post, "down")}
+                          />
+                          <Button variant="ghost" size="sm">
+                            <MessageCircle className="h-5 w-5 mr-2" />
+                            {post.comments}
+                          </Button>
+                          <Button variant="ghost" size="sm">
+                            <Share2 className="h-5 w-5 mr-2" />
+                            Share
+                          </Button>
+                        </div>
+                      </CardFooter>
+                    </Card>
+                    {(index + 1) % 3 === 0 && (
+                      <div className="py-2" aria-hidden>
+                        <AdSlot slot={feedAdSlot} />
                       </div>
-                    </CardFooter>
-                  </Card>
+                    )}
+                  </Fragment>
                 ))
               )}
             </TabsContent>
@@ -418,17 +463,15 @@ export function FeedPage() {
                       />
                     </CardContent>
                     <CardFooter className="border-t pt-3">
-                      <div className="flex justify-between w-full">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleLike(post.id)}
-                          disabled={likeLoadingId === post.id}
-                          className={post.hasLiked ? "text-red-500" : ""}
-                        >
-                          <Heart className={`h-5 w-5 mr-2 ${post.hasLiked ? "fill-current" : ""}`} />
-                          {post.likes}
-                        </Button>
+                      <div className="flex justify-between w-full items-center">
+                        <PostVoteControls
+                          upvotes={post.upvotes}
+                          downvotes={post.downvotes}
+                          userVote={post.userVote}
+                          loading={voteLoadingId === post.id}
+                          onUp={() => handleVote(post, "up")}
+                          onDown={() => handleVote(post, "down")}
+                        />
                         <Button variant="ghost" size="sm">
                           <MessageCircle className="h-5 w-5 mr-2" />
                           {post.comments}
@@ -481,17 +524,15 @@ export function FeedPage() {
                             />
                           </CardContent>
                           <CardFooter className="border-t pt-3">
-                            <div className="flex justify-between w-full">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleLike(post.id)}
-                                disabled={likeLoadingId === post.id}
-                                className={post.hasLiked ? "text-red-500" : ""}
-                              >
-                                <Heart className={`h-5 w-5 mr-2 ${post.hasLiked ? "fill-current" : ""}`} />
-                                {post.likes}
-                              </Button>
+                            <div className="flex justify-between w-full items-center">
+                              <PostVoteControls
+                                upvotes={post.upvotes}
+                                downvotes={post.downvotes}
+                                userVote={post.userVote}
+                                loading={voteLoadingId === post.id}
+                                onUp={() => handleVote(post, "up")}
+                                onDown={() => handleVote(post, "down")}
+                              />
                               <Button variant="ghost" size="sm">
                                 <MessageCircle className="h-5 w-5 mr-2" />
                                 {post.comments}

@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Globe, Pencil, BadgeCheck } from "lucide-react"
+import { ModerationBadge } from "@/components/moderation-badge"
 import Link from "next/link"
 import { format } from "date-fns"
 import { toast } from "sonner"
@@ -307,7 +308,8 @@ export default function ProfilePage() {
           <div className="space-y-4">
             {posts.map((p) => (
               <Card key={p.id}>
-                <CardContent className="pt-4">
+                <CardContent className="pt-4 space-y-2">
+                  <ModerationBadge status={p.moderationStatus} rejectionReason={p.rejectionReason} />
                   <p className="whitespace-pre-line">{p.content}</p>
                   {p.videoUrl && (
                     <video src={p.videoUrl} controls className="mt-3 w-full max-h-96 rounded-lg" />
@@ -319,7 +321,7 @@ export default function ProfilePage() {
                     variant="compact"
                   />
                   <p className="text-sm text-muted-foreground mt-2">
-                    {p.likes} likes · {p.comments} comments
+                    {p.upvotes}↑ · {p.downvotes}↓ · {p.comments} comments
                   </p>
                 </CardContent>
               </Card>

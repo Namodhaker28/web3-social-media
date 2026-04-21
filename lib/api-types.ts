@@ -3,6 +3,8 @@
  * author.address / author.avatar match existing feed UI (walletAddress, avatarUrl).
  */
 
+export type UserRole = "user" | "admin"
+
 export interface ApiUser {
   id: string
   walletAddress: string | null
@@ -13,6 +15,7 @@ export interface ApiUser {
   bio: string
   avatarUrl: string
   isVerified: boolean
+  role?: UserRole
   createdAt?: string
   updatedAt?: string
 }
@@ -29,6 +32,8 @@ export interface PostAuthor {
   isVerified?: boolean
 }
 
+export type ModerationStatus = "pending" | "approved" | "rejected"
+
 export interface ApiPost {
   id: string
   content: string
@@ -39,11 +44,18 @@ export interface ApiPost {
   createdAt: string
   updatedAt?: string
   author: PostAuthor
-  likes: number
+  /** Count of upvotes (value 1). */
+  upvotes: number
+  /** Count of downvotes (value -1). */
+  downvotes: number
+  /** Current user's vote: 1, -1, or 0 if none / logged out. */
+  userVote: 1 | -1 | 0
   comments: number
-  hasLiked: boolean
   isBookmarked?: boolean
   tags?: string[]
+  moderationStatus?: ModerationStatus
+  reviewedAt?: string | null
+  rejectionReason?: string
 }
 
 export interface ApiComment {
@@ -83,4 +95,41 @@ export interface AuthResponse {
 export interface PaginatedPosts {
   posts: ApiPost[]
   hasMore: boolean
+}
+
+/** GET /users/me/earnings */
+export interface UserEarningsResponse {
+  estimate: {
+    year: number
+    month: number
+    ratePaisePerPoint: number
+    estimatedTotalPaise: number
+    estimatedTotalInr: number
+    posts: { postId: string; netScore: number; amountPaise: number }[]
+  }
+  history: {
+    periodId: string
+    year: number
+    month: number
+    status: string
+    totalPaise: number
+  }[]
+}
+
+export interface PayoutPeriodRow {
+  id: string
+  year: number
+  month: number
+  status: string
+  computedAt?: string
+  createdAt?: string
+}
+
+export interface ClosePeriodResult {
+  periodId: string
+  year: number
+  month: number
+  postsProcessed: number
+  linesCreated: number
+  userTotalsPaise: Record<string, number>
 }

@@ -13,6 +13,9 @@ import type {
   ApiStoryItem,
   ApiNotification,
   PostAuthor,
+  UserEarningsResponse,
+  PayoutPeriodRow,
+  ClosePeriodResult,
 } from "./api-types"
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
@@ -149,6 +152,42 @@ export const usersApi = {
   },
   getSuggestions: (limit?: number) =>
     request<ApiUser[]>(`/users/suggestions${limit != null ? `?limit=${limit}` : ""}`),
+  /** Estimated monthly earnings and closed-period history (creator payouts). */
+  getEarnings: () => request<UserEarningsResponse>("/users/me/earnings"),
+}
+
+/** Admin (requires role admin on the account). */
+export const adminApi = {
+  moderationPending: (page = 1, limit = 20) =>
+    request<PaginatedPosts>(`/admin/moderation/pending?page=${page}&limit=${limit}`),
+  approvePost: (postId: string) =>
+    request<ApiPost>(`/admin/moderation/${postId}/approve`, { method: "POST" }),
+  rejectPost: (postId: string, reason?: string) =>
+    request<ApiPost>(`/admin/moderation/${postId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason ?? "" }),
+    }),
+  payoutPeriods: () => request<PayoutPeriodRow[]>("/admin/payouts/periods"),
+  closePayoutPeriod: (year: number, month: number) =>
+    request<ClosePeriodResult>("/admin/payouts/close", {
+      method: "POST",
+      body: JSON.stringify({ year, month }),
+    }),
+  markPayoutPaid: (periodId: string) =>
+    request<{ id: string; status: string }>(`/admin/payouts/periods/${periodId}/mark-paid`, {
+      method: "POST",
+    }),
+  payoutPeriodLines: (periodId: string) =>
+    request<
+      {
+        id: string
+        userId: unknown
+        postId: unknown
+        netScore: number
+        amountPaise: number
+        amountInr: number
+      }[]
+    >(`/admin/payouts/periods/${periodId}/lines`),
 }
 
 /** Feed */
@@ -183,10 +222,12 @@ export const postsApi = {
   archive: (id: string) => request<{ archived: boolean }>(`/posts/${id}/archive`, { method: "POST" }),
   unarchive: (id: string) =>
     request<{ archived: boolean }>(`/posts/${id}/unarchive`, { method: "POST" }),
-  like: (postId: string) =>
-    request<{ liked: boolean; likesCount: number }>(`/posts/${postId}/like`, { method: "POST" }),
-  unlike: (postId: string) =>
-    request<{ liked: boolean; likesCount: number }>(`/posts/${postId}/like`, { method: "DELETE" }),
+  /** Set vote: 1 up, -1 down, 0 removes vote. */
+  vote: (postId: string, value: 1 | -1 | 0) =>
+    request<{ upvotes: number; downvotes: number; userVote: 1 | -1 | 0 }>(`/posts/${postId}/vote`, {
+      method: "POST",
+      body: JSON.stringify({ value }),
+    }),
   bookmark: (postId: string) =>
     request<{ bookmarked: boolean }>(`/posts/${postId}/bookmark`, { method: "POST" }),
   unbookmark: (postId: string) =>

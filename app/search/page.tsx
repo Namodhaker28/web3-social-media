@@ -199,7 +199,7 @@ function SearchContent() {
                       <CardContent className="pt-4">
                         <p className="whitespace-pre-line">{p.content}</p>
                         <p className="text-sm text-muted-foreground mt-2">
-                          {(p.author as { name?: string }).name || truncate((p.author as { address?: string }).address ?? "")} · {p.likes} likes
+                          {(p.author as { name?: string }).name || truncate((p.author as { address?: string }).address ?? "")} · {p.upvotes}↑ · {p.downvotes}↓
                         </p>
                       </CardContent>
                     </Card>

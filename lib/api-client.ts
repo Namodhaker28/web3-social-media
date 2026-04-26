@@ -5,6 +5,8 @@
 
 import type {
   AuthResponse,
+  RegisterPendingResponse,
+  MessageResponse,
   ApiPost,
   ApiUser,
   ApiComment,
@@ -35,8 +37,14 @@ export function setAuthToken(token: string | null): void {
   }
 }
 
-/** Login/register 401 means bad credentials — never redirect those to /login. */
-const AUTH_CREDENTIAL_PATHS = new Set(["/auth/login", "/auth/register"])
+/** Auth endpoints where 401 is expected — do not clear token or force redirect. */
+const AUTH_CREDENTIAL_PATHS = new Set([
+  "/auth/login",
+  "/auth/register",
+  "/auth/verify-email",
+  "/auth/resend-verification",
+  "/auth/google",
+])
 
 /**
  * Clears session and sends the browser to login when the API rejects the session.
@@ -124,15 +132,25 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify(credentials),
     }),
-  register: (credentials: {
-    name: string
-    email?: string
-    mobile?: string
-    password: string
-  }) =>
-    request<AuthResponse>("/auth/register", {
+  register: (credentials: { name: string; email: string; mobile: string; password: string }) =>
+    request<RegisterPendingResponse>("/auth/register", {
       method: "POST",
       body: JSON.stringify(credentials),
+    }),
+  verifyEmail: (body: { token: string }) =>
+    request<AuthResponse>("/auth/verify-email", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  resendVerification: (body: { email: string }) =>
+    request<MessageResponse>("/auth/resend-verification", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  googleAuth: (body: { credential: string }) =>
+    request<AuthResponse>("/auth/google", {
+      method: "POST",
+      body: JSON.stringify(body),
     }),
 }
 

@@ -92,6 +92,17 @@ export interface AuthResponse {
   token: string
 }
 
+/** POST /auth/register — account created; user must verify email before JWT is issued. */
+export interface RegisterPendingResponse {
+  message: string
+  email: string
+}
+
+/** POST /auth/resend-verification */
+export interface MessageResponse {
+  message: string
+}
+
 export interface PaginatedPosts {
   posts: ApiPost[]
   hasMore: boolean

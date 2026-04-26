@@ -4,6 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useAuth, type RegisterCredentials } from "@/components/auth-provider"
+import { GoogleAuthButton } from "@/components/google-auth-button"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -24,19 +25,17 @@ function isValidMobile(mobile: string): boolean {
   return MOBILE_REGEX.test(mobile.trim())
 }
 
-/** Validate register payload (name, email XOR mobile, password strength). */
+/** Validate register payload (name, email, mobile, password). */
 function validateRegister(
   creds: RegisterCredentials & { confirmPassword?: string }
 ): string | null {
   const name = creds.name?.trim() ?? ""
   if (!name) return "Enter your name"
   if (name.length > 100) return "Name must be at most 100 characters"
-  const hasEmail = !!creds.email?.trim()
-  const hasMobile = !!creds.mobile?.trim()
-  if (!hasEmail && !hasMobile) return "Enter email or mobile number"
-  if (hasEmail && hasMobile) return "Enter email or mobile, not both"
-  if (hasEmail && !isValidEmail(creds.email!)) return "Invalid email format"
-  if (hasMobile && !isValidMobile(creds.mobile!)) return "Invalid mobile format (e.g. +1234567890)"
+  if (!creds.email?.trim()) return "Enter your email"
+  if (!isValidEmail(creds.email)) return "Invalid email format"
+  if (!creds.mobile?.trim()) return "Enter your mobile number"
+  if (!isValidMobile(creds.mobile)) return "Invalid mobile format (e.g. +1234567890)"
   if (!creds.password || creds.password.length < 8) return "Password must be at least 8 characters"
   if (creds.confirmPassword !== creds.password) return "Passwords do not match"
   return null
@@ -44,16 +43,16 @@ function validateRegister(
 
 export function RegisterPage() {
   const router = useRouter()
-  const { register, isAuthenticated } = useAuth()
+  const { register, loginWithGoogle, isAuthenticated } = useAuth()
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [mobile, setMobile] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
-  const [useEmail, setUseEmail] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
 
   if (isAuthenticated) {
     router.push("/feed")
@@ -64,9 +63,10 @@ export function RegisterPage() {
     e.preventDefault()
     const creds: RegisterCredentials & { confirmPassword?: string } = {
       name: name.trim(),
+      email: email.trim(),
+      mobile: mobile.trim(),
       password,
       confirmPassword,
-      ...(useEmail ? { email: email.trim() } : { mobile: mobile.trim() }),
     }
     const err = validateRegister(creds)
     if (err) {
@@ -75,20 +75,35 @@ export function RegisterPage() {
     }
     setLoading(true)
     try {
-      await register({
+      const res = await register({
         name: creds.name,
         email: creds.email,
         mobile: creds.mobile,
         password: creds.password,
       })
-      toast.success("Account created")
-      router.push("/feed")
+      toast.success(res.message)
+      router.push(`/verify-email?email=${encodeURIComponent(res.email)}`)
     } catch (e) {
       toast.error((e as Error).message ?? "Registration failed")
     } finally {
       setLoading(false)
     }
   }
+
+  const handleGoogleCredential = async (credential: string) => {
+    setGoogleLoading(true)
+    try {
+      await loginWithGoogle(credential)
+      toast.success("Signed in with Google")
+      router.push("/feed")
+    } catch (e) {
+      toast.error((e as Error).message ?? "Google sign-in failed")
+    } finally {
+      setGoogleLoading(false)
+    }
+  }
+
+  const showGoogle = Boolean(process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID?.trim())
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted flex flex-col items-center justify-center p-4">
@@ -101,29 +116,12 @@ export function RegisterPage() {
         <CardHeader>
           <CardTitle>Sign up</CardTitle>
           <CardDescription>
-            Add your name; we assign a unique username you can change later in your profile.
+            Add your name, email, and mobile; we assign a unique username you can change later in
+            your profile. You must verify your email before signing in.
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit}>
           <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant={useEmail ? "default" : "outline"}
-                size="sm"
-                onClick={() => setUseEmail(true)}
-              >
-                Email
-              </Button>
-              <Button
-                type="button"
-                variant={!useEmail ? "default" : "outline"}
-                size="sm"
-                onClick={() => setUseEmail(false)}
-              >
-                Mobile
-              </Button>
-            </div>
             <div className="space-y-2">
               <Label htmlFor="name">Name</Label>
               <Input
@@ -132,37 +130,34 @@ export function RegisterPage() {
                 placeholder="Your display name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                disabled={loading}
+                disabled={loading || googleLoading}
                 autoComplete="name"
               />
             </div>
-            {useEmail ? (
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading}
-                  autoComplete="email"
-                />
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="mobile">Mobile</Label>
-                <Input
-                  id="mobile"
-                  type="tel"
-                  placeholder="+1234567890"
-                  value={mobile}
-                  onChange={(e) => setMobile(e.target.value)}
-                  disabled={loading}
-                  autoComplete="tel"
-                />
-              </div>
-            )}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={loading || googleLoading}
+                autoComplete="email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="mobile">Mobile</Label>
+              <Input
+                id="mobile"
+                type="tel"
+                placeholder="+1234567890"
+                value={mobile}
+                onChange={(e) => setMobile(e.target.value)}
+                disabled={loading || googleLoading}
+                autoComplete="tel"
+              />
+            </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <div className="relative">
@@ -172,7 +167,7 @@ export function RegisterPage() {
                   placeholder="At least 8 characters"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  disabled={loading}
+                  disabled={loading || googleLoading}
                   autoComplete="new-password"
                   className="pr-10"
                 />
@@ -182,7 +177,7 @@ export function RegisterPage() {
                   size="icon"
                   className="absolute right-0 top-0 h-10 w-10 text-muted-foreground hover:text-foreground"
                   onClick={() => setShowPassword((v) => !v)}
-                  disabled={loading}
+                  disabled={loading || googleLoading}
                   aria-label={showPassword ? "Hide password" : "Show password"}
                 >
                   {showPassword ? (
@@ -202,7 +197,7 @@ export function RegisterPage() {
                   placeholder="••••••••"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  disabled={loading}
+                  disabled={loading || googleLoading}
                   autoComplete="new-password"
                   className="pr-10"
                 />
@@ -212,7 +207,7 @@ export function RegisterPage() {
                   size="icon"
                   className="absolute right-0 top-0 h-10 w-10 text-muted-foreground hover:text-foreground"
                   onClick={() => setShowConfirmPassword((v) => !v)}
-                  disabled={loading}
+                  disabled={loading || googleLoading}
                   aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
                 >
                   {showConfirmPassword ? (
@@ -225,9 +220,25 @@ export function RegisterPage() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Creating account..." : "Sign up"}
+            <Button type="submit" className="w-full" disabled={loading || googleLoading}>
+              {loading ? "Creating account…" : "Sign up"}
             </Button>
+            {showGoogle && (
+              <>
+                <div className="relative w-full">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">Or</span>
+                  </div>
+                </div>
+                <GoogleAuthButton
+                  onCredential={handleGoogleCredential}
+                  disabled={googleLoading || loading}
+                />
+              </>
+            )}
             <p className="text-sm text-muted-foreground">
               Already have an account?{" "}
               <Link href="/login" className="text-primary hover:underline">

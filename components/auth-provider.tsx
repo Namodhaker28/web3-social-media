@@ -13,8 +13,13 @@ import { authApi, setAuthToken, getAuthToken } from "@/lib/api-client"
 /** Credentials for email/mobile + password login. */
 export type AuthCredentials = { email?: string; mobile?: string; password: string }
 
-/** Sign-up payload: display name plus email or mobile + password (server assigns username). */
-export type RegisterCredentials = AuthCredentials & { name: string }
+/** Sign-up payload: display name, email, mobile, and password (server assigns username). */
+export type RegisterCredentials = {
+  name: string
+  email: string
+  mobile: string
+  password: string
+}
 
 type AuthContextType = {
   /** JWT token if authenticated. */
@@ -23,11 +28,13 @@ type AuthContextType = {
   isAuthenticated: boolean
   /** Login with email or mobile + password. */
   login: (creds: AuthCredentials) => Promise<void>
-  /** Register with name, email or mobile + password. */
-  register: (creds: RegisterCredentials) => Promise<void>
+  /** Register; does not set token until email is verified. */
+  register: (creds: RegisterCredentials) => Promise<{ message: string; email: string }>
+  /** Exchange Google ID token for session. */
+  loginWithGoogle: (credential: string) => Promise<void>
   /** Logout and clear token. */
   logout: () => void
-  /** Set token (e.g. after external auth). */
+  /** Set token (e.g. after verify-email or external auth). */
   setToken: (token: string | null) => void
 }
 
@@ -35,7 +42,8 @@ const AuthContext = createContext<AuthContextType>({
   token: null,
   isAuthenticated: false,
   login: async () => {},
-  register: async () => {},
+  register: async () => ({ message: "", email: "" }),
+  loginWithGoogle: async () => {},
   logout: () => {},
   setToken: () => {},
 })
@@ -62,9 +70,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [setToken]
   )
 
-  const register = useCallback(
-    async (creds: RegisterCredentials) => {
-      const res = await authApi.register(creds)
+  const register = useCallback(async (creds: RegisterCredentials) => {
+    return authApi.register(creds)
+  }, [])
+
+  const loginWithGoogle = useCallback(
+    async (credential: string) => {
+      const res = await authApi.googleAuth({ credential })
       setToken(res.token)
     },
     [setToken]
@@ -81,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAuthenticated: !!token,
         login,
         register,
+        loginWithGoogle,
         logout,
         setToken,
       }}
